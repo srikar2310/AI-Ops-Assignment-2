@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: shard-validator
+spec:
+  completions: 8
+  parallelism: 4
+  completionMode: Indexed
+  template:
+    metadata:
+      labels:
+        app: shard-validator
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: validator
+        image: python:3.10-slim
+        command:
+        - python3
+        - -c
+        - |
+          import os, random
+
+          index = os.getenv("JOB_COMPLETION_INDEX", "0")
+          node = os.getenv("NODE_NAME", "unknown")
+          pod = os.getenv("POD_NAME", "unknown")
+
+          # Seed randomly per shard index for deterministic synthetic invalid row count
+          random.seed(int(index) + 42)
+          invalid_rows = random.randint(3, 25)
+
+          print(f"[REPORT] Node: {node} | Pod: {pod} | Shard: shard_{index}.csv | Invalid Rows: {invalid_rows}")
+        env:
+        - name: JOB_COMPLETION_INDEX
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "128Mi"
+          limits:
+            cpu: "1000m"
+            memory: "256Mi"
